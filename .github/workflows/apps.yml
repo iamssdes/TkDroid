@@ -1,6 +1,6 @@
 # Builds the PocketTk window apps (Mac .dmg for Apple Silicon and Intel, Windows installer + zip, Linux .tar.gz for x86_64 and
 # aarch64), runs the tests, and attaches the files to a release.
-# Push a tag like v4.1.1 to make a release (v4.1.1-rc1 makes a pre-release); run it by hand (Actions > Desktop apps > Run workflow) to just get the files.
+# Push a tag like v4.1.2 to make a release (v4.1.2-rc1 makes a pre-release); run it by hand (Actions > Desktop apps > Run workflow) to just get the files.
 name: Desktop apps
 
 on:
@@ -20,7 +20,7 @@ jobs:
         with: { python-version: "3.12" }
       - uses: actions/setup-node@v4
         with: { node-version: "20" }
-      - run: python -m unittest tests.test_deps tests.test_gui tests.test_packaging tests.test_termux_connect
+      - run: python -m unittest tests.test_deps tests.test_gui tests.test_packaging tests.test_termux_connect tests.test_check
       - run: node tests/test_core.js && node tests/test_shell.js
 
   dmg:
@@ -124,11 +124,13 @@ jobs:
     needs: [dmg, windows, linux, android]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: { pattern: "PocketTk-*", merge-multiple: true, path: dist }
       - uses: softprops/action-gh-release@v2
         with:
-          prerelease: ${{ contains(github.ref_name, '-') }}      # v4.1.1-rc1 is a pre-release, v4.1.1 is not
+          body_path: RELEASE_NOTES.md
+          prerelease: ${{ contains(github.ref_name, '-') }}      # v4.1.2-rc1 is a pre-release, v4.1.2 is not
           files: |
             dist/*.dmg
             dist/*.zip

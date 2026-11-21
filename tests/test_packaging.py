@@ -188,5 +188,12 @@ class AndroidZipInRelease(unittest.TestCase):
         self.assertRegex(wf, r"needs: \[[^\]]*android[^\]]*\]")
 
 
+class ReleaseNotes(unittest.TestCase):
+    def test_notes_match_the_version_and_are_attached(self):
+        v = re.search(r"^version=v(\S+)", read("module.prop"), re.M).group(1)
+        self.assertTrue(read("RELEASE_NOTES.md").startswith("# PocketTk v" + v), "update RELEASE_NOTES.md for the new version")
+        self.assertIn("body_path: RELEASE_NOTES.md", read(".github/workflows/apps.yml"))
+
+
 if __name__ == "__main__":
     unittest.main()

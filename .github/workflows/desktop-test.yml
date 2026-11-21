@@ -36,7 +36,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: "20" }
       - name: Python tests
-        run: python -m unittest tests.test_deps tests.test_gui tests.test_gui_smoke tests.test_packaging tests.test_termux_connect tests.test_terminal_page -v
+        run: python -m unittest tests.test_deps tests.test_gui tests.test_gui_smoke tests.test_packaging tests.test_termux_connect tests.test_terminal_page tests.test_check -v
       - name: JavaScript tests
         run: |
           node tests/test_core.js

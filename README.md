@@ -1,4 +1,4 @@
-# PocketTk v4.1.1
+# PocketTk v4.1.2
 
 Turn a Python **tkinter** script into an installable Android APK (or, on a Mac, an iOS .ipa). Runs in Termux (rooted or not, as a KernelSU module or on its own), or on Windows, Linux and macOS.
 (Python is transpiled to Java, or to Swift for iOS; there is no embedded CPython.)
@@ -20,7 +20,7 @@ These still work for anyone who likes a terminal; the window runs the same comma
     pockettk delete --id NAME [-y]            uninstall the app (its data goes too) and remove the id
     pockettk delete-uninstalled                remove the ids of apps that are no longer installed
     pockettk logs [PKG|app.py] [-f] [-e] [-c]  errors/prints with Python line numbers
-    pockettk check app.py                      transpile only, show warnings
+    pockettk check app.py [-v]                 transpile only, show warnings (-v: the generated Java too)
     pockettk install FILE.apk [PKG]
     pockettk list | uninstall [PKG|app.py|--all] | demo | doctor
     pockettk gui                               the same thing as a window on the phone (see "The window on Android")
@@ -261,6 +261,8 @@ Widgets (Label, Button, Entry, Text, Checkbutton, Radiobutton, Scale, Listbox, C
 **colorchooser.askcolor(color=None, title=None)** shows a dialog (palette + R/G/B sliders) and returns `((r, g, b), "#rrggbb")`, or `(None, None)` on Cancel.
 
 **Treeview** (`ttk.Treeview`): `columns=`, `show="headings"` or `"tree headings"`, `height=`, `selectmode=`; `heading()`, `column()` (width, anchor), `insert(parent, index, iid=, text=, values=, open=, tags=)`, `delete`, `detach`, `move`, `item`, `set`, `get_children`, `parent`, `index`, `next`, `prev`, `exists`, `selection` / `selection_set/add/remove/toggle`, `focus`, `see`, `tag_configure(background=, foreground=)`, and the events `<<TreeviewSelect>>`, `<<TreeviewOpen>>`, `<<TreeviewClose>>` and double tap. A tap on a row selects it; with the tree column shown it also opens or closes a parent row. **LabeledScale**: a number label above (or `compound="bottom"` below) a scale, both on `variable=`.
+
+**Canvas**: `create_line` (`smooth`, `arrow=first|last|both`, `dash=`, `width`), `create_rectangle`, `create_oval`, `create_arc` (`start`, `extent`, `style=pieslice|chord|arc`), `create_polygon` (filled, `outline`, `smooth`), `create_text` (`anchor`, `font=("Arial", 14, "bold")`, `justify`, `width=` to wrap, several lines), `create_image`; `state="hidden"`. Methods: `coords`, `move`, `moveto`, `scale`, `delete` (several tags), `itemconfig`, `itemcget`, `type`, `gettags`, `bbox`, `find_all`, `find_withtag`, `find_closest`, `find_overlapping`, `find_enclosed`, `find_above`, `find_below`, `addtag_*`, `dtag`, `tag_raise` / `lift`, `tag_lower` / `lower`, `tag_bind(tag, "<Button-1>", fn)` (also `<ButtonRelease-1>`, `<B1-Motion>`; `"current"` is the tapped item). Not yet: `create_window`, `create_bitmap`, `postscript`.
 
 **Images**: `tk.PhotoImage(file="logo.png")` (PNG, JPEG, GIF, WebP, BMP; the file next to your script is copied into the app), `PhotoImage(data=base64_text)`, `PhotoImage(width=, height=)`, with `width() height() zoom() subsample() copy() put() get() blank() configure()`. Use it with `image=` on Label and Button (`compound="left|right|top|bottom"` shows text too; without `compound` only the picture shows) and `canvas.create_image(x, y, image=img, anchor="nw")`. Keep a reference to the image, as in tkinter. No PIL / ImageTk.
 

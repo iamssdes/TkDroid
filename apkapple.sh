@@ -19,7 +19,7 @@ else
   WORK="$HOME/.pockettk/work"; KS_DIR="$HOME/.pockettk"
 fi
 OUT_DIR=/sdcard/Download/PocketTk
-VERSION="PocketTk v4.1.1"
+VERSION="PocketTk v4.1.2"
 EDITION=full          # make_demo.py sets this to "demo" (PocketTk Demo), make_consumer.py to "consumer" (PocketTk Consumer)
 EDITION_TAG=""; [ "$EDITION" = demo ] && EDITION_TAG=" Demo"; [ "$EDITION" = consumer ] && EDITION_TAG=" Consumer"
 PKG_PREFIX="pockettk.ssdes."
@@ -162,7 +162,7 @@ PocketTk - turn a tkinter script into an Android APK   (command: pockettk; the o
   pockettk build app.py [-n NAME] [-p PACKAGE] [-o OUT.apk] [--icon IMG] [--id NAME] [-i] [-k]
   pockettk build app.py --aab [--id NAME] [--target-sdk N] [--keystore FILE [--ks-alias A]]   Android App Bundle for Google Play upload
   pockettk logs [PACKAGE|app.py] [-f] [-e] [-c]   errors/prints with Python line numbers
-  pockettk check app.py        transpile only; show warnings and generated Java
+  pockettk check app.py [-v]   transpile only; show warnings (-v: also the generated Java)
   pockettk install file.apk    install an APK (pm install -r)
   pockettk update --id NAME [code.py] [--patch|--small|--medium|--large] [--debug]   rebuild + install over the old app (keeps its data)
   pockettk update --id NAME --new-pkg   move an app from an old package (tkdroid.ssdes.* and older) to pockettk.ssdes.* (update does this by itself; --keep-pkg stays on the old package)
@@ -248,12 +248,21 @@ q() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
 safe_name() { echo "$1" | tr 'A-Z' 'a-z' | sed 's/[^a-z0-9]/_/g; s/^_*//; s/_*$//'; }
 
 cmd_check() {
-  [ -f "$1" ] || die "no such file: $1"
-  py=$(find_tool python3); [ -n "$py" ] || die "python3 not found (run: apple doctor)"
+  _java=0; _src=""
+  for _a in "$@"; do
+    case "$_a" in -v|--java) _java=1;; *) [ -n "$_src" ] || _src=$_a;; esac
+  done
+  [ -f "$_src" ] || die "no such file: $_src"
+  py=$(find_tool python3); [ -n "$py" ] || die "python3 not found (run: pockettk doctor)"
   rm -rf "$WORK/check"; mkdir -p "$WORK/tmp" "$WORK/check"
-  tx "$py" -I "$MODDIR/transpile.py" gen "$1" "$WORK/check" --no-assets || die "transpile failed"
-  echo "---- generated Script.java ----"
-  cat "$WORK/check/src/apple/gen/Script.java"
+  _out=$(tx "$py" -I "$MODDIR/transpile.py" gen "$_src" "$WORK/check" --no-assets 2>&1) || { printf '%s\n' "$_out"; die "transpile failed"; }
+  [ -n "$_out" ] && printf '%s\n' "$_out"
+  _n=$(printf '%s\n' "$_out" | grep -c '^warning:' || true)
+  if [ "$_n" -eq 0 ]; then echo "no warnings"; elif [ "$_n" -eq 1 ]; then echo "1 warning"; else echo "$_n warnings"; fi
+  if [ "$_java" = 1 ]; then
+    echo "---- generated Script.java ----"
+    cat "$WORK/check/src/apple/gen/Script.java"
+  fi
 }
 
 cmd_demo() {

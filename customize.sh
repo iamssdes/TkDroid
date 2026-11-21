@@ -1,7 +1,7 @@
 #!/system/bin/sh
 . "$MODPATH/logo.sh"
 pockettk_logo ui_print
-ui_print "- PocketTk v4.1.1: tkinter -> APK"
+ui_print "- PocketTk v4.1.2: tkinter -> APK"
 set_perm_recursive "$MODPATH" 0 0 0755 0644
 set_perm "$MODPATH/apkapple.sh" 0 0 0755
 set_perm "$MODPATH/install_termux.sh" 0 0 0755

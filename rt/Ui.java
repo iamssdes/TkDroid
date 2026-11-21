@@ -6,6 +6,7 @@ import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
+import android.graphics.Path;
 import android.graphics.Rect;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
@@ -1092,6 +1093,11 @@ public final class Ui {
         return new Py.Obj() { public Object callm(String n, Object[] a) { return null; } };
     }
 
+    /** Pixels per dp, exact (dp(1) is rounded to a whole pixel, which scaled canvas drawing wrongly on 2.625-density phones). */
+    static float density() {
+        return TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 1f, ctx.getResources().getDisplayMetrics());
+    }
+
     static int dp(float v) {
         return Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, ctx.getResources().getDisplayMetrics()));
     }
@@ -2048,6 +2054,14 @@ public final class Ui {
     static final class CItem {
         Img img;
         String anchor = "center";
+        double start = 0, extent = 90;          // arc
+        String style = "pieslice";              // arc
+        String arrow = "none";                  // line
+        float[] dash;
+        boolean smooth, hidden, bold, italic, noFill;
+        String justify = "left";
+        float wrap;                             // text width= (wrap width)
+        final List<Object[]> binds = new ArrayList<Object[]>();   // {sequence, fn} from tag_bind
         int id;
         String type;
         double[] c;
@@ -2060,6 +2074,7 @@ public final class Ui {
 
     static final class CanvasView extends View {
         final List<CItem> items = new ArrayList<CItem>();
+        int currentId = -1;
         int cw = 300, ch = 200;
         final Paint paint = new Paint();
         CanvasView(Context c) { super(c); }
@@ -2069,7 +2084,7 @@ public final class Ui {
         }
 
         @Override protected void onDraw(Canvas canvas) {
-            float d = dp(1);
+            float d = density();
             canvas.save();
             canvas.scale(d, d);
             paint.setAntiAlias(true);
@@ -2079,21 +2094,54 @@ public final class Ui {
 
         void draw(Canvas cv, CItem it) {
             double[] c = it.c;
+            if (it.hidden || c == null) return;
             switch (it.type) {
                 case "line": {
+                    if (c.length < 4) break;
+                    int col = it.fill != null ? it.fill : 0xFF000000;
                     paint.setStyle(Paint.Style.STROKE);
                     paint.setStrokeWidth(it.width);
-                    paint.setColor(it.fill != null ? it.fill : 0xFF000000);
-                    for (int i = 0; i + 3 < c.length; i += 2) cv.drawLine((float) c[i], (float) c[i + 1], (float) c[i + 2], (float) c[i + 3], paint);
+                    paint.setColor(col);
+                    if (it.smooth && c.length >= 6) cv.drawPath(CanvasKit.smoothPath(c, false), paint);
+                    else for (int i = 0; i + 3 < c.length; i += 2) CanvasKit.dashed(cv, (float) c[i], (float) c[i + 1], (float) c[i + 2], (float) c[i + 3], it.dash, paint);
+                    int n = c.length;
+                    if (it.arrow.equals("first") || it.arrow.equals("both")) CanvasKit.arrowHead(cv, (float) c[0], (float) c[1], (float) c[2], (float) c[3], it.width, paint);
+                    if (it.arrow.equals("last") || it.arrow.equals("both")) CanvasKit.arrowHead(cv, (float) c[n - 2], (float) c[n - 1], (float) c[n - 4], (float) c[n - 3], it.width, paint);
                     break;
                 }
                 case "polygon": {
-                    paint.setStyle(Paint.Style.STROKE);
-                    paint.setStrokeWidth(it.width);
-                    paint.setColor(it.outline != null ? it.outline : it.fill != null ? it.fill : 0xFF000000);
-                    for (int i = 0; i + 1 < c.length; i += 2) {
-                        int j = (i + 2) % c.length;
-                        cv.drawLine((float) c[i], (float) c[i + 1], (float) c[j], (float) c[j + 1], paint);
+                    if (c.length < 6) break;
+                    Path path = it.smooth ? CanvasKit.smoothPath(c, true) : new Path();
+                    if (!it.smooth) {
+                        path.moveTo((float) c[0], (float) c[1]);
+                        for (int i = 2; i + 1 < c.length; i += 2) path.lineTo((float) c[i], (float) c[i + 1]);
+                        path.close();
+                    }
+                    paint.setStyle(Paint.Style.FILL);
+                    paint.setColor(it.fill != null ? it.fill : 0xFF000000);
+                    if (!it.noFill) cv.drawPath(path, paint);
+                    if (it.outline != null) {
+                        paint.setStyle(Paint.Style.STROKE);
+                        paint.setStrokeWidth(it.width);
+                        paint.setColor(it.outline);
+                        cv.drawPath(path, paint);
+                    }
+                    break;
+                }
+                case "arc": {
+                    if (c.length < 4) break;
+                    RectF r = CanvasKit.rect(c);
+                    float st = (float) -it.start, sw = (float) -it.extent;
+                    if (!it.style.equals("arc") && it.fill != null) {
+                        paint.setStyle(Paint.Style.FILL);
+                        paint.setColor(it.fill);
+                        cv.drawArc(r, st, sw, it.style.equals("pieslice"), paint);
+                    }
+                    if (it.outline != null || it.fill == null || it.style.equals("arc")) {
+                        paint.setStyle(Paint.Style.STROKE);
+                        paint.setStrokeWidth(it.width);
+                        paint.setColor(it.style.equals("arc") && it.fill != null && it.outline == null ? it.fill : it.outline != null ? it.outline : 0xFF000000);
+                        cv.drawArc(r, st, sw, it.style.equals("pieslice"), paint);
                     }
                     break;
                 }
@@ -2114,10 +2162,8 @@ public final class Ui {
                     break;
                 }
                 case "text": {
-                    paint.setStyle(Paint.Style.FILL);
-                    paint.setColor(it.fill != null ? it.fill : 0xFF000000);
-                    paint.setTextSize(it.size);
-                    cv.drawText(it.text, (float) c[0], (float) c[1] + it.size / 3f, paint);
+                    if (c.length < 2) break;
+                    CanvasKit.drawText(cv, it, paint, it.fill != null ? it.fill : 0xFF000000);
                     break;
                 }
                 case "image": {
@@ -2165,6 +2211,7 @@ public final class Ui {
         double pbMax = 100, pbVal = 0;
         List<Object> choices = new ArrayList<Object>();
         CanvasView canvas;
+        final List<Object[]> bindTags = new ArrayList<Object[]>();      // {tag, sequence, fn} from Canvas.tag_bind
         Tree tree;
         int nextItem = 1;
         // Notebook (tabs)
@@ -3212,6 +3259,7 @@ public final class Ui {
             for (int i = 0; i < it.c.length; i++) it.c[i] = cs.get(i);
             if (type.equals("text")) { for (Object p : pos) if (p instanceof String) it.text = (String) p; }
             applyItemOpts(it, kw);
+            for (Object[] bt : bindTags) if (it.tags.contains(String.valueOf(bt[0])) || String.valueOf(it.id).equals(String.valueOf(bt[0]))) it.binds.add(new Object[]{bt[1], bt[2]});
             canvas.items.add(it);
             canvas.invalidate();
             return it;
@@ -3220,10 +3268,29 @@ public final class Ui {
         void applyItemOpts(CItem it, Map<String, Object> kw) {
             for (Map.Entry<String, Object> e : kw.entrySet()) {
                 switch (e.getKey()) {
-                    case "fill": it.fill = color(e.getValue()); break;
-                    case "outline": it.outline = color(e.getValue()); break;
-                    case "width": it.width = (float) Py.dbl(e.getValue()); break;
+                    case "fill": { Object v = e.getValue(); it.noFill = v == null || Py.str(v).isEmpty(); it.fill = it.noFill ? null : color(v); break; }
+                    case "outline": { Object v = e.getValue(); it.outline = v == null || Py.str(v).isEmpty() ? null : color(v); break; }
+                    case "width": it.width = (float) Py.dbl(e.getValue()); if (it.type.equals("text")) it.wrap = it.width; break;
                     case "text": it.text = Py.str(e.getValue()); break;
+                    case "start": it.start = Py.dbl(e.getValue()); break;
+                    case "extent": it.extent = Py.dbl(e.getValue()); break;
+                    case "style": it.style = Py.str(e.getValue()).toLowerCase(); break;
+                    case "arrow": it.arrow = Py.str(e.getValue()).toLowerCase(); break;
+                    case "smooth": it.smooth = flag(e.getValue()); break;
+                    case "justify": it.justify = Py.str(e.getValue()).toLowerCase(); break;
+                    case "state": it.hidden = Py.str(e.getValue()).equals("hidden"); break;
+                    case "dash": {
+                        Object v = e.getValue();
+                        List<Float> d = new ArrayList<Float>();
+                        if (v instanceof List) for (Object x : (List) v) d.add((float) Py.dbl(x));
+                        else if (Py.isNum(v)) { d.add((float) Py.dbl(v)); d.add((float) Py.dbl(v)); }
+                        else for (char ch : Py.str(v).toCharArray()) d.add(ch == '.' ? 2f : ch == '-' ? 6f : ch == ',' ? 4f : ch == ' ' ? 4f : 0f);
+                        d.removeAll(java.util.Collections.singleton(0f));
+                        if (d.size() % 2 == 1) d.add(d.get(d.size() - 1));
+                        it.dash = null;
+                        if (!d.isEmpty()) { it.dash = new float[d.size()]; for (int k = 0; k < it.dash.length; k++) it.dash[k] = d.get(k); }
+                        break;
+                    }
                     case "image": {
                         if (it.img != null) it.img.users.remove(canvas);
                         it.img = imgOf(e.getValue());
@@ -3232,13 +3299,18 @@ public final class Ui {
                     }
                     case "anchor": it.anchor = Py.str(e.getValue()).toLowerCase(); break;
                     case "tags": case "tag": {
+                        it.tags.clear();
                         Object t = e.getValue();
-                        if (t instanceof List) for (Object x : (List) t) it.tags.add(Py.str(x)); else it.tags.add(Py.str(t));
+                        if (t instanceof List) for (Object x : (List) t) it.tags.add(Py.str(x)); else for (String x : Py.str(t).split("\\s+")) if (!x.isEmpty()) it.tags.add(x);
                         break;
                     }
                     case "font": {
                         Object f = e.getValue();
-                        if (f instanceof List) for (Object x : (List) f) if (Py.isNum(x)) it.size = (float) Math.abs(Py.dbl(x));
+                        List<Object> parts = f instanceof List ? (List<Object>) f : new ArrayList<Object>(java.util.Arrays.asList((Object[]) Py.str(f).split("\\s+")));
+                        for (Object x : parts) {
+                            if (Py.isNum(x)) it.size = (float) Math.abs(Py.dbl(x));
+                            else { String w = Py.str(x).toLowerCase(); if (w.contains("bold")) it.bold = true; if (w.contains("italic")) it.italic = true; }
+                        }
                         break;
                     }
                     default: break;
@@ -3246,12 +3318,66 @@ public final class Ui {
             }
         }
 
+        boolean itemTouchOn;
+
+        /** Taps and drags on canvas items run the functions given to tag_bind. */
+        void installItemTouch() {
+            if (itemTouchOn) return;
+            itemTouchOn = true;
+            final View.OnTouchListener prev = canvasTouch;
+            final Wid self = this;
+            canvasTouch = new View.OnTouchListener() {
+                public boolean onTouch(View v, MotionEvent e) {
+                    if (prev != null) prev.onTouch(v, e);
+                    float d = density();
+                    double x = e.getX() / d, y = e.getY() / d;
+                    int act = e.getAction();
+                    CItem top = null;
+                    for (int i = canvas.items.size() - 1; i >= 0 && top == null; i--) if (CanvasKit.hit(canvas.items.get(i), x, y, 3, canvas.paint)) top = canvas.items.get(i);
+                    if (act == 0) canvas.currentId = top == null ? -1 : top.id;
+                    if (top == null) return true;
+                    String want = act == 0 ? "press" : act == 1 ? "release" : act == 2 ? "motion" : "";
+                    for (Object[] b : new ArrayList<Object[]>(top.binds)) {
+                        String q = String.valueOf(b[0]);
+                        boolean press = q.contains("Button-1") || q.contains("ButtonPress-1") || q.equals("<1>");
+                        boolean rel = q.contains("ButtonRelease");
+                        boolean mot = q.contains("Motion");
+                        if (rel) press = false;
+                        if ((want.equals("press") && press && !mot) || (want.equals("release") && rel) || (want.equals("motion") && mot))
+                            Ui.call(b[1], new Ext.Event(self, "x", (long) x, "y", (long) y));
+                    }
+                    return true;
+                }
+            };
+            view.setOnTouchListener(canvasTouch);
+        }
+
         List<CItem> citems(Object sel) {
             List<CItem> r = new ArrayList<CItem>();
             String s = Py.str(sel);
             for (CItem it : canvas.items) {
-                if (s.equals("all") || s.equals(String.valueOf(it.id)) || it.tags.contains(s)) r.add(it);
+                boolean ok = s.equals("all") || s.equals(String.valueOf(it.id)) || it.tags.contains(s) || (s.equals("current") && it.id == canvas.currentId);
+                if (ok && !r.contains(it)) r.add(it);
             }
+            return r;
+        }
+
+        CItem one(Object sel) {
+            List<CItem> l = citems(sel);
+            return l.isEmpty() ? null : l.get(0);
+        }
+
+        Object ids(List<CItem> l) {
+            List<Object> r = new ArrayList<Object>();
+            for (CItem it : l) r.add((long) it.id);
+            return new Py.Tuple(r);
+        }
+
+        double[] nums(List<Object> pos, int from) {
+            List<Double> cs = new ArrayList<Double>();
+            for (int i = from; i < pos.size(); i++) { Object p = pos.get(i); if (p instanceof List) for (Object q : (List) p) cs.add(Py.dbl(q)); else cs.add(Py.dbl(p)); }
+            double[] r = new double[cs.size()];
+            for (int i = 0; i < r.length; i++) r[i] = cs.get(i);
             return r;
         }
 
@@ -3500,7 +3626,7 @@ public final class Ui {
                     public boolean onTouch(View v, MotionEvent e) {
                         if (prev != null) prev.onTouch(v, e);
                         int act = e.getAction();
-                        float d = dp(1);
+                        float d = density();
                         if ((press && act == 0) || (motion && act == 2) || (release && act == 1)) {
                             Ui.call(fn, new Ext.Event(self, "x", (long) (e.getX() / d), "y", (long) (e.getY() / d)));
                         }
@@ -3597,6 +3723,8 @@ public final class Ui {
 
         Object canvasCall(String name, List<Object> pos, Map<String, Object> kw) {
             Object a0 = pos.size() > 0 ? pos.get(0) : null;
+            Object a1 = pos.size() > 1 ? pos.get(1) : null;
+            Paint mp = canvas.paint;
             switch (name) {
                 case "create_line": return (long) citem("line", pos, kw).id;
                 case "create_rectangle": return (long) citem("rectangle", pos, kw).id;
@@ -3604,9 +3732,10 @@ public final class Ui {
                 case "create_polygon": return (long) citem("polygon", pos, kw).id;
                 case "create_text": return (long) citem("text", pos, kw).id;
                 case "create_image": return (long) citem("image", pos, kw).id;
+                case "create_arc": return (long) citem("arc", pos, kw).id;
                 case "delete": {
-                    List<CItem> hit = citems(a0 == null ? "all" : a0);
-                    canvas.items.removeAll(hit);
+                    if (pos.isEmpty()) a0 = "all";
+                    for (Object sel : pos.isEmpty() ? java.util.Collections.<Object>singletonList("all") : pos) canvas.items.removeAll(citems(sel));
                     canvas.invalidate();
                     return null;
                 }
@@ -3616,19 +3745,26 @@ public final class Ui {
                     canvas.invalidate();
                     return null;
                 }
+                case "moveto": {
+                    List<CItem> hit = citems(a0);
+                    float x1 = Float.MAX_VALUE, y1 = Float.MAX_VALUE;
+                    for (CItem it : hit) { float[] b = CanvasKit.bbox(it, mp); if (b != null) { x1 = Math.min(x1, b[0]); y1 = Math.min(y1, b[1]); } }
+                    if (x1 == Float.MAX_VALUE) return null;
+                    double dx = a1 == null || "".equals(a1) ? 0 : Py.dbl(a1) - x1, dy = pos.size() < 3 || "".equals(pos.get(2)) ? 0 : Py.dbl(pos.get(2)) - y1;
+                    for (CItem it : hit) for (int i = 0; i + 1 < it.c.length; i += 2) { it.c[i] += dx; it.c[i + 1] += dy; }
+                    canvas.invalidate();
+                    return null;
+                }
+                case "scale": {
+                    double ox = Py.dbl(pos.get(1)), oy = Py.dbl(pos.get(2)), sx = Py.dbl(pos.get(3)), sy = Py.dbl(pos.get(4));
+                    for (CItem it : citems(a0)) for (int i = 0; i + 1 < it.c.length; i += 2) { it.c[i] = ox + (it.c[i] - ox) * sx; it.c[i + 1] = oy + (it.c[i + 1] - oy) * sy; }
+                    canvas.invalidate();
+                    return null;
+                }
                 case "coords": {
                     List<CItem> hit = citems(a0);
                     if (hit.isEmpty()) return new Py.Tuple(new ArrayList<Object>());
-                    if (pos.size() > 1) {
-                        List<Object> rest = new ArrayList<Object>(pos.subList(1, pos.size()));
-                        List<Double> cs = new ArrayList<Double>();
-                        for (Object p : rest) { if (p instanceof List) for (Object q : (List) p) cs.add(Py.dbl(q)); else cs.add(Py.dbl(p)); }
-                        double[] c = new double[cs.size()];
-                        for (int i = 0; i < c.length; i++) c[i] = cs.get(i);
-                        hit.get(0).c = c;
-                        canvas.invalidate();
-                        return null;
-                    }
+                    if (pos.size() > 1) { hit.get(0).c = nums(pos, 1); canvas.invalidate(); return null; }
                     List<Object> r = new ArrayList<Object>();
                     for (double d : hit.get(0).c) r.add(d);
                     return new Py.Tuple(r);
@@ -3638,14 +3774,113 @@ public final class Ui {
                     canvas.invalidate();
                     return null;
                 }
-                case "find_all": {
+                case "itemcget": {
+                    CItem it = one(a0);
+                    if (it == null) return "";
+                    switch (Py.str(a1).replace("-", "")) {
+                        case "fill": return it.fill == null ? "" : String.format("#%06x", it.fill & 0xFFFFFF);
+                        case "outline": return it.outline == null ? "" : String.format("#%06x", it.outline & 0xFFFFFF);
+                        case "width": return (double) it.width;
+                        case "text": return it.text;
+                        case "state": return it.hidden ? "hidden" : "normal";
+                        case "tags": return new Py.Tuple(new ArrayList<Object>(it.tags));
+                        case "start": return it.start;
+                        case "extent": return it.extent;
+                        case "anchor": return it.anchor;
+                        default: return "";
+                    }
+                }
+                case "type": { CItem it = one(a0); return it == null ? null : it.type; }
+                case "gettags": { CItem it = one(a0); return new Py.Tuple(it == null ? new ArrayList<Object>() : new ArrayList<Object>(it.tags)); }
+                case "bbox": {
+                    float x1 = Float.MAX_VALUE, y1 = Float.MAX_VALUE, x2 = -Float.MAX_VALUE, y2 = -Float.MAX_VALUE;
+                    for (CItem it : pos.isEmpty() ? canvas.items : citems(a0)) {
+                        float[] b = CanvasKit.bbox(it, mp);
+                        if (b == null) continue;
+                        x1 = Math.min(x1, b[0]); y1 = Math.min(y1, b[1]); x2 = Math.max(x2, b[2]); y2 = Math.max(y2, b[3]);
+                    }
+                    if (x1 == Float.MAX_VALUE) return null;
                     List<Object> r = new ArrayList<Object>();
-                    for (CItem it : canvas.items) r.add((long) it.id);
+                    r.add((long) Math.floor(x1)); r.add((long) Math.floor(y1)); r.add((long) Math.ceil(x2)); r.add((long) Math.ceil(y2));
                     return new Py.Tuple(r);
                 }
-                case "addtag_withtag": case "dtag": case "tag_raise": case "tag_lower": case "tag_bind": return null;
-                case "winfo_width": return (long) (canvas.getWidth() / dp(1));
-                case "winfo_height": return (long) (canvas.getHeight() / dp(1));
+                case "find_all": return ids(canvas.items);
+                case "find_withtag": return ids(citems(a0));
+                case "find_closest": {
+                    double x = Py.dbl(a0), y = Py.dbl(a1), best = Double.MAX_VALUE;
+                    CItem bi = null;
+                    for (CItem it : canvas.items) {
+                        float[] b = CanvasKit.bbox(it, mp);
+                        if (b == null || it.hidden) continue;
+                        double dx = Math.max(Math.max(b[0] - x, 0), x - b[2]), dy = Math.max(Math.max(b[1] - y, 0), y - b[3]);
+                        double d = Math.hypot(dx, dy);
+                        if (d <= best) { best = d; bi = it; }          // later (higher) items win ties
+                    }
+                    return ids(bi == null ? new ArrayList<CItem>() : java.util.Collections.singletonList(bi));
+                }
+                case "find_overlapping": case "find_enclosed": {
+                    double x1 = Py.dbl(a0), y1 = Py.dbl(a1), x2 = Py.dbl(pos.get(2)), y2 = Py.dbl(pos.get(3));
+                    List<CItem> r = new ArrayList<CItem>();
+                    for (CItem it : canvas.items) {
+                        float[] b = CanvasKit.bbox(it, mp);
+                        if (it.hidden) continue;
+                        if (name.equals("find_overlapping") ? CanvasKit.overlaps(b, x1, y1, x2, y2) : CanvasKit.enclosed(b, x1, y1, x2, y2)) r.add(it);
+                    }
+                    return ids(r);
+                }
+                case "find_above": case "find_below": {
+                    CItem it = one(a0);
+                    int i = it == null ? -1 : canvas.items.indexOf(it);
+                    int j = name.equals("find_above") ? i + 1 : i - 1;
+                    return ids(i >= 0 && j >= 0 && j < canvas.items.size() ? java.util.Collections.singletonList(canvas.items.get(j)) : new ArrayList<CItem>());
+                }
+                case "addtag_withtag": case "addtag_all": case "addtag_above": case "addtag_below": case "addtag_closest": case "addtag_enclosed": case "addtag_overlapping": {
+                    String tag = Py.str(a0);
+                    List<CItem> hit;
+                    if (name.equals("addtag_all")) hit = new ArrayList<CItem>(canvas.items);
+                    else if (name.equals("addtag_withtag")) hit = citems(a1);
+                    else {
+                        String find = "find_" + name.substring(7);
+                        Object ids = canvasCall(find, new ArrayList<Object>(pos.subList(1, pos.size())), kw);
+                        hit = new ArrayList<CItem>();
+                        for (Object id : (List<?>) ids) hit.addAll(citems(String.valueOf(id)));
+                    }
+                    for (CItem it : hit) if (!it.tags.contains(tag)) it.tags.add(tag);
+                    return null;
+                }
+                case "dtag": {
+                    for (CItem it : citems(a0)) { if (pos.size() > 1) it.tags.remove(Py.str(a1)); else it.tags.clear(); }
+                    return null;
+                }
+                case "tag_raise": case "lift": case "tag_lower": case "lower": {
+                    List<CItem> hit = citems(a0);
+                    boolean up = name.equals("tag_raise") || name.equals("lift");
+                    CItem ref = pos.size() > 1 ? one(a1) : null;
+                    canvas.items.removeAll(hit);
+                    int at = up ? canvas.items.size() : 0;
+                    if (ref != null && canvas.items.contains(ref)) at = canvas.items.indexOf(ref) + (up ? 1 : 0);
+                    canvas.items.addAll(at, hit);
+                    canvas.invalidate();
+                    return null;
+                }
+                case "tag_bind": {
+                    if (pos.size() < 3) return null;
+                    final String sel = Py.str(a0), seq = Py.str(a1);
+                    final Object fn = pos.get(2);
+                    for (CItem it : canvas.items) if (it.tags.contains(sel) || String.valueOf(it.id).equals(sel)) it.binds.add(new Object[]{seq, fn});
+                    bindTags.add(new Object[]{sel, seq, fn});
+                    installItemTouch();
+                    return null;
+                }
+                case "tag_unbind": {
+                    for (CItem it : citems(a0)) it.binds.clear();
+                    for (java.util.Iterator<Object[]> i = bindTags.iterator(); i.hasNext(); ) if (i.next()[0].equals(Py.str(a0))) i.remove();
+                    return null;
+                }
+                case "canvasx": case "canvasy": return a0;
+                case "focus": case "icursor": case "select_clear": case "scan_mark": case "scan_dragto": return null;
+                case "winfo_width": return (long) (canvas.getWidth() / density());
+                case "winfo_height": return (long) (canvas.getHeight() / density());
                 default: return NOPE;
             }
         }

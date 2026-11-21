@@ -13,7 +13,7 @@ Installing on a phone goes through adb (USB debugging or Wireless debugging); no
 import os, re, sys, shutil, subprocess, tempfile, zlib, glob, time, json, platform, argparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-VERSION = "PocketTk v4.1.1"
+VERSION = "PocketTk v4.1.2"
 PKG_PREFIX = "pockettk.ssdes."
 LEGACY_PREFIXES = ("tkdroid.ssdes.", "tkdroid.palalgon.", "tkdroid.molt.", "apple.app.")
 WIN = os.name == "nt"
@@ -783,7 +783,10 @@ def main(argv=None):
     r = sp.add_parser("run"); r.add_argument("script"); common(r); pv_args(r); r.add_argument("--logs", action="store_true")
     u = sp.add_parser("update"); u.add_argument("script", nargs="?"); common(u); pv_args(u); u.add_argument("--logs", action="store_true")
     pr = sp.add_parser("preview"); pr.add_argument("script"); pr.add_argument("-n", "--name"); pr.add_argument("-k", "--keep", action="store_true"); pv_args(pr)
-    ck = sp.add_parser("check"); ck.add_argument("script")
+    ck = sp.add_parser("check", help="transpile only: show warnings (nothing is built)",
+                       description="Transpile the script and show the warnings and notes. Nothing is built. -v also prints the generated Java.")
+    ck.add_argument("script")
+    ck.add_argument("-v", "--java", action="store_true", help="also print the generated Java")
     sp.add_parser("ids"); sp.add_parser("doctor"); sp.add_parser("setup"); sp.add_parser("version")
     gu = sp.add_parser("gui", help="open the PocketTk window (file picker, build, setup) - no terminal needed")
     gu.add_argument("script", nargs="?", help="a .py file to preselect")
@@ -810,7 +813,15 @@ def main(argv=None):
             tmp = os.path.join(WORK, "check"); shutil.rmtree(tmp, ignore_errors=True); os.makedirs(tmp)
             p = run([python_exe(), "-I", os.path.join(HERE, "transpile.py"), "gen", a.script, tmp, "--no-assets"], check=False)
             if p.returncode: sys.stdout.write(p.stdout); die("transpile failed")
-            print(open(os.path.join(tmp, "src", "apple", "gen", "Script.java"), encoding="utf-8").read()); return 0
+            lines = [l for l in p.stdout.splitlines() if l.strip()]
+            for l in lines:
+                print(l)                                    # the transpiler's own "warning: ..." and "note: ..." lines
+            n = sum(1 for l in lines if l.startswith("warning:"))
+            print("no warnings" if not n else "%d warning%s" % (n, "" if n == 1 else "s"))
+            if a.java:
+                print("---- generated Script.java ----")
+                print(open(os.path.join(tmp, "src", "apple", "gen", "Script.java"), encoding="utf-8").read())
+            return 0
         if a.cmd == "preview":
             preview(a.script, a.width, a.height, a.dpi, a.cpu, a.name, a.keep); return 0
         if a.cmd == "logs":
